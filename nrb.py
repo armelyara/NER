@@ -241,11 +241,13 @@ def load_model(method: str, model: str) -> Any:
                 file=sys.stderr,
             )
             sys.exit(1)
+    elif method in ["openai","openai_fewshot"]:
+        return model
 
     else:
         print(f"❌ Méthode {method} non supportée", file=sys.stderr)
         print(
-            f"   Méthodes disponibles: spacy, flair, transformers, ollama, ollama_fewshot",
+            f"   Méthodes disponibles: spacy, flair, transformers, ollama, ollama_fewshot, openai, openai_fewshot",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -342,6 +344,59 @@ def predict_transformers(
 # ========================================
 # PRÉDICTIONS - GRANDS MODÈLES DE LANGUE
 # ========================================
+SYSTEM_PROMPT = """You are a Named Entity Recognition system. 
+Given the sentence and the target entity, classify the target as exactly one of: PERSON, ORGANIZATION, or LOCATION.
+
+Rules:
+- Output ONLY one of these three words: PERSON, ORGANIZATION, LOCATION
+- Do not explain, do not add punctuation
+- Base your answer on the context of the sentence"""
+
+USER_PROMPT_ZERO_SHOT = """Sentence: %s
+Target entity: %s
+
+Classification:
+"""
+
+PROMPT_ZERO_SHOT = """You are a Named Entity Recognition system. 
+Given the sentence and the target entity, classify the target as exactly one of: PERSON, ORGANIZATION, or LOCATION.
+
+Rules:
+- Output ONLY one of these three words: PERSON, ORGANIZATION, LOCATION
+- Do not explain, do not add punctuation
+- Base your answer on the context of the sentence
+
+Sentence: %s
+Target entity: %s
+
+Classification:"""
+
+PROMPT_FEW_SHOT = """You are a Named Entity Recognition system. Classify entities based on context.
+
+Example 1:
+Sentence: "Throughout the 20th century, Coutts opened more branches."
+Target: Coutts
+Answer: ORGANIZATION
+
+Example 2:
+Sentence: "Dahmer is an unincorporated community located in Pendleton County, West Virginia."
+Target: Dahmer
+Answer: LOCATION
+
+Example 3:
+Sentence: "Obama served two terms as president of the United States."
+Target: Obama
+Answer: PERSON
+
+Example 4:
+Sentence: "Masamune's father Date Terumune entered Miyamori Castle shortly after Masamune entered Obama."
+Target: Obama
+Answer: LOCATION
+
+Now classify this:
+Sentence: %s
+Target: %s
+Answer:"""
 
 
 def predict_ollama_zero(
@@ -350,18 +405,7 @@ def predict_ollama_zero(
     """Prédiction avec Ollama en zero-shot"""
     import ollama
 
-    prompt = f"""You are a Named Entity Recognition system. 
-Given the sentence and the target entity, classify the target as exactly one of: PERSON, ORGANIZATION, or LOCATION.
-
-Rules:
-- Output ONLY one of these three words: PERSON, ORGANIZATION, LOCATION
-- Do not explain, do not add punctuation
-- Base your answer on the context of the sentence
-
-Sentence: {sentence}
-Target entity: {target_text}
-
-Classification:"""
+    prompt = PROMPT_ZERO_SHOT % (sentence, target_text)
 
     try:
         response = ollama.generate(model=model_name, prompt=prompt)
@@ -386,32 +430,7 @@ def predict_ollama_fewshot(
     """Prédiction avec Ollama en few-shot learning"""
     import ollama
 
-    prompt = f"""You are a Named Entity Recognition system. Classify entities based on context.
-
-Example 1:
-Sentence: "Throughout the 20th century, Coutts opened more branches."
-Target: Coutts
-Answer: ORGANIZATION
-
-Example 2:
-Sentence: "Dahmer is an unincorporated community located in Pendleton County, West Virginia."
-Target: Dahmer
-Answer: LOCATION
-
-Example 3:
-Sentence: "Obama served two terms as president of the United States."
-Target: Obama
-Answer: PERSON
-
-Example 4:
-Sentence: "Masamune's father Date Terumune entered Miyamori Castle shortly after Masamune entered Obama."
-Target: Obama
-Answer: LOCATION
-
-Now classify this:
-Sentence: {sentence}
-Target: {target_text}
-Answer:"""
+    prompt = PROMPT_FEW_SHOT % (sentence,target_text)
 
     try:
         response = ollama.generate(model=model_name, prompt=prompt)
@@ -427,6 +446,85 @@ Answer:"""
             return None
     except Exception as e:
         print(f"❌ Erreur Ollama: {e}", file=sys.stderr)
+        return None
+    
+def predict_openai_zero(
+    model_name: str, sentence: str, target_text: str
+) -> Optional[str]:
+    """Prédiction avec OpenAI en zero-shot"""
+    import os
+    from openai import OpenAI
+
+    client = OpenAI(api_key=os.environ["OPENAI_KEY"])
+
+    user_prompt = USER_PROMPT_ZERO_SHOT % (sentence,target_text)
+
+    try:
+        response = client.chat.completions.create(
+        model=model_name,
+        messages=[
+            {
+                "role": "system",
+                "content": SYSTEM_PROMPT
+                },
+            {
+                "role": "user",
+                "content": user_prompt}
+            ]
+        )
+        output = response.choices[0].message.content
+        #print(output)
+        prediction = output.strip().upper()
+
+        if "PERSON" in prediction:
+            return "PERSON"
+        elif "ORGANIZATION" in prediction:
+            return "ORGANIZATION"
+        elif "LOCATION" in prediction:
+            return "LOCATION"
+        else:
+            return None
+    except Exception as e:
+        print(f"❌ Erreur OpenAI: {e}", file=sys.stderr)
+        return None
+    
+def predict_openai_fewshot(
+    model_name: str, sentence: str, target_text: str
+) -> Optional[str]:
+    """Prédiction avec OpenAI en few-shot"""
+    import os
+    from openai import OpenAI
+
+    client = OpenAI(api_key=os.environ["OPEN_AI_KEY"])
+
+    user_prompt = PROMPT_FEW_SHOT % (sentence,target_text)
+
+    try:
+        response = client.chat.completions.create(
+        model=model_name,
+        messages=[
+            {
+                "role": "system",
+                "content": SYSTEM_PROMPT
+                },
+            {
+                "role": "user",
+                "content": user_prompt}
+            ]
+        )
+        output = response.choices[0].message.content
+        prediction = output.strip().upper()
+
+        if "PERSON" in prediction:
+            return "PERSON"
+        elif "ORGANIZATION" in prediction:
+            return "ORGANIZATION"
+        elif "LOCATION" in prediction:
+            return "LOCATION"
+        else:
+            return None
+    except Exception as e:
+        print(f"❌ Erreur OpenAI: {e}", file=sys.stderr)
         return None
 
 
@@ -451,7 +549,7 @@ Exemples d'utilisation:
     parser.add_argument(
         "--method",
         required=True,
-        choices=["spacy", "flair", "transformers", "ollama", "ollama_fewshot"],
+        choices=["spacy", "flair", "transformers", "ollama", "ollama_fewshot", "openai", "openai_fewshot"],
         help="Méthode NER à utiliser",
     )
     parser.add_argument("--model", required=True, help="Nom du modèle spécifique")
@@ -459,6 +557,12 @@ Exemples d'utilisation:
         "--verbose",
         action="store_true",
         help="Afficher les détails de prédiction",
+    )
+    parser.add_argument(
+        "--lines",
+        type=int,
+        default=None,
+        help="Optionnel: Limite le nombre de lignes à lire",
     )
     args = parser.parse_args()
 
@@ -510,6 +614,10 @@ Exemples d'utilisation:
                 prediction = predict_ollama_zero(args.model, sentence, target_text)
             elif args.method == "ollama_fewshot":
                 prediction = predict_ollama_fewshot(args.model, sentence, target_text)
+            elif args.method == "openai":
+                prediction = predict_openai_zero(args.model, sentence, target_text)
+            elif args.method == "openai_fewshot":
+                prediction = predict_openai_fewshot(args.model, sentence, target_text)
             else:
                 prediction = None
 
@@ -530,6 +638,9 @@ Exemples d'utilisation:
                 print(f"[{line_num}] ❌ {e}", file=sys.stderr)
 
         print(prediction if prediction else "None")
+
+        if args.lines and processed >= args.lines:
+                break
 
     if args.verbose:
         print(f"\n{'='*60}", file=sys.stderr)
