@@ -1,0 +1,16 @@
+Accuracy:  0.7105
+Precision: 0.7169
+Recall:    0.7105
+F1-score:  0.7137
+
+Métriques par classe:
+PERSON          - P: 0.6827, R: 0.6125, F1: 0.6457
+ORGANIZATION    - P: 0.4520, R: 0.5774, F1: 0.5071
+LOCATION        - P: 0.8634, R: 0.8204, F1: 0.8413
+
+Matrice de confusion:
+               LOCATION       ORGANIZATION   PERSON         None           
+LOCATION                  2161            224            234             15
+ORGANIZATION               119            537            248             26
+PERSON                     223            427           1037              6
+None                         0              0              0              0
