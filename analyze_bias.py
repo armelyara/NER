@@ -1,81 +1,69 @@
 #!/usr/bin/env python3
-"""
-Analyse approfondie du biais de nom
-"""
+"""Analyse du biais de nom sur le corpus NRB"""
 
 import re
-from collections import Counter, defaultdict
+from collections import defaultdict
 
+# Charger gold labels et entités
+gold_file = "data/en.nrb.txt"
+pred_file = "results/en-nrb-bert-base.out"
 
-def analyze_entity_ambiguity(nrb_file):
-    """
-    Identifie les entités qui apparaissent avec différents types
-    (preuve du biais de nom)
-    """
-    entity_types = defaultdict(set)
+entities = {}
+with open(gold_file, 'r') as f:
+    for line in f:
+        match = re.search(r'\[([^\]]+)\]_\{([^\}]+)\}', line)
+        if match:
+            entity = match.group(1)
+            etype = match.group(2)
+            if entity not in entities:
+                entities[entity] = set()
+            entities[entity].add(etype)
 
-    with open(nrb_file, "r") as f:
-        for line in f:
-            match = re.search(r"\[([^\]]+)\]_\{([^\}]+)\}", line)
-            if match:
-                entity = match.group(1)
-                etype = match.group(2)
-                entity_types[entity].add(etype)
+# Entités ambiguës
+ambiguous = {e: types for e, types in entities.items() if len(types) > 1}
 
-    # Entités ambiguës
-    ambiguous = {e: types for e, types in entity_types.items() if len(types) > 1}
+# Charger prédictions
+gold_labels = []
+with open(gold_file, 'r') as f:
+    for line in f:
+        match = re.search(r'_\{([^\}]+)\}', line)
+        if match:
+            gold_labels.append(match.group(1))
 
-    print(f"Entités ambiguës trouvées: {len(ambiguous)}")
-    print("\nExemples d'entités avec plusieurs types:")
-    for entity, types in list(ambiguous.items())[:10]:
-        print(f"  {entity}: {', '.join(types)}")
+pred_labels = []
+with open(pred_file, 'r') as f:
+    for line in f:
+        line = line.strip()
+        pred_labels.append(line if line and line != "None" else None)
 
-    return ambiguous
+# Analyser erreurs
+min_len = min(len(gold_labels), len(pred_labels))
+gold_labels = gold_labels[:min_len]
+pred_labels = pred_labels[:min_len]
 
+confusion = defaultdict(int)
+for g, p in zip(gold_labels, pred_labels):
+    if g != p:
+        confusion[(g, p)] += 1
 
-def analyze_error_patterns(gold_file, pred_file):
-    """Analyse les patterns d'erreurs"""
-    errors = defaultdict(list)
+# Générer rapport
+with open('rapport_data/analyse_biais.md', 'w') as f:
+    f.write("# Analyse du Biais de Nom\n\n")
+    f.write(f"## Statistiques Générales\n\n")
+    f.write(f"- Entités uniques: {len(entities)}\n")
+    f.write(f"- Entités ambiguës: {len(ambiguous)}\n")
+    f.write(f"- Taux d'ambiguïté: {len(ambiguous)/len(entities)*100:.1f}%\n\n")
+    
+    f.write(f"## Top 10 Entités Ambiguës\n\n")
+    f.write("| Entité | Types observés |\n")
+    f.write("|--------|----------------|\n")
+    for entity, types in sorted(ambiguous.items(), key=lambda x: len(x[1]), reverse=True)[:10]:
+        f.write(f"| {entity} | {', '.join(sorted(types))} |\n")
+    
+    f.write(f"\n## Top 5 Erreurs Fréquentes (BERT)\n\n")
+    f.write("| Gold | Prédiction | Fréquence |\n")
+    f.write("|------|------------|----------|\n")
+    for (gold, pred), count in sorted(confusion.items(), key=lambda x: x[1], reverse=True)[:5]:
+        f.write(f"| {gold} | {pred or 'None'} | {count} |\n")
 
-    gold_labels = []
-    with open(gold_file, "r") as f:
-        for line in f:
-            match = re.search(r"\[([^\]]+)\]_\{([^\}]+)\}", line)
-            if match:
-                entity = match.group(1)
-                gold_type = match.group(2)
-                sentence = re.sub(r"\[([^\]]+)\]_\{[^\}]+\}", r"\1", line).strip()
-                gold_labels.append((entity, gold_type, sentence))
-
-    with open(pred_file, "r") as f:
-        preds = [line.strip() for line in f]
-
-    for (entity, gold, sentence), pred in zip(gold_labels, preds):
-        if gold != pred:
-            errors[(gold, pred)].append((entity, sentence))
-
-    print("\n=== Patterns d'erreurs ===")
-    for (gold, pred), examples in sorted(
-        errors.items(), key=lambda x: len(x[1]), reverse=True
-    ):
-        print(f"\n{gold} → {pred}: {len(examples)} erreurs")
-        for entity, sent in examples[:3]:
-            print(f"  - {entity}: {sent[:80]}...")
-
-
-def main():
-    import sys
-
-    if len(sys.argv) < 2:
-        print("Usage: python3 analyze_bias.py en.nrb.txt [prediction_file]")
-        sys.exit(1)
-
-    print("=== Analyse du biais de nom ===\n")
-    ambiguous = analyze_entity_ambiguity(sys.argv[1])
-
-    if len(sys.argv) == 3:
-        analyze_error_patterns(sys.argv[1], sys.argv[2])
-
-
-if __name__ == "__main__":
-    main()
+print("Analyse du biais terminée!")
