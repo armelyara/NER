@@ -3,7 +3,7 @@
 Programme d'évaluation de systèmes NER sur le corpus NRB
 OPTIMISÉ POUR MAC M2 PRO avec accélération GPU (MPS)
 
-Auteur: [Votre Nom]
+Auteurs: Rui Cong Su, Armel Yara 
 Cours: IFT6285 - TALN
 Date: Octobre 2025
 
